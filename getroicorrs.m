@@ -1,4 +1,4 @@
-function [corrlist_subs avgcorrmat_subs]=getroicorrs(subList,roiList,cond,sess,mypwd,ms,numvols)
+function [corrlist_subs avgcorrmat_subs]=getroicorrs(subList,roiList,sess,mypwd,outdir,ms,numvols,fisherz)
 
 %script to pull out group correlation matrix in fisher transformed units of
 %ROI-pairs in functional connectivity analysis with 1 run per subject.  The
@@ -25,7 +25,7 @@ timeseries(1,1,1).rest=zeros([numvols,length(roiList),length(subList)]); %volume
     %store correlation matrix
 timeseries(1,1,2).rest=zeros([length(roiList),length(roiList),length(subList)]); %volumes x numrois x subs
     
-    %store fishers z correlation matrix
+    %store fisher's z correlation matrix
 timeseries(1,1,3).rest=zeros([length(roiList),length(roiList),length(subList)]); %volumes x numrois x subs
 
 
@@ -37,7 +37,7 @@ for u=1:N;
       for roi=1:length(roiList);
         %DEPENDING ON HOW YOUR DATA IS STORED, YOU MAY HAVE TO CHANGE ...
          %   THIS LINE!!
-        path=[mypwd,char(subList{u,1}),'/',cond,'/',sess,'/REST/rsOut/func/nuisancereg.feat/stats'];
+        path=[mypwd,char(subList{u,1}),'/ses-',sess,'/seedCorrelation/compcor/rois'];
         cd(path)
         if(ms==1)
             ts=load([char(roiList{roi}),'_residvol_ms_ts.txt']);
@@ -65,20 +65,20 @@ for u=1:length(subList);
 end
 
 
-%now want to do fishers z on correlation matrices 
-
-for u=1:length(subList);
-            for roi=1:length(roiList);
-                for p=1:(length(roiList)*length(roiList)*length(subList))
-                    x=timeseries(1,1,2).rest(p);
-                    timeseries(1,1,3).rest(p)=(.5*log((1+(x))/(1-(x)))); 
-                    %timeseries(1,1,3).rest(:,:,1)=correlation matrix between rois, in fzt units, for first subject
-                    %sub_mat=timeseries(1,1,3).rest(p)
-                    %  save([char(subList{u,1}),'.mat'],'sub_mat')
+%now want to do fisher's z on correlation matrices 
+if (fisherz==1)
+    for u=1:length(subList);
+                for roi=1:length(roiList);
+                    for p=1:(length(roiList)*length(roiList)*length(subList))
+                        x=timeseries(1,1,2).rest(p);
+                        timeseries(1,1,3).rest(p)=(.5*log((1+(x))/(1-(x)))); 
+                        %timeseries(1,1,3).rest(:,:,1)=correlation matrix between rois, in fzt units, for first subject
+                        %sub_mat=timeseries(1,1,3).rest(p)
+                        %  save([char(subList{u,1}),'.mat'],'sub_mat')
+                    end
                 end
-            end
+    end
 end
-
 
 
 
@@ -90,28 +90,33 @@ avgcorrmat_subs=mean(timeseries(1,1,3).rest(:,:,:),3);
 % avgcorrmat_subs=mean(timeseries(1,1,2).rest(:,:,:),3);
 
 %write to text file
-cd(mypwd)
-
-%SAVES INDIVIDUAL SUBJECT CORR MATRICES
+cd(outdir)
 for u=1:length(subList);
- fname=char(subList{u});
- sub_mat=timeseries(1,1,3).rest(:,:,u);
- sub_mat(isinf(sub_mat))=1;
- save(fname,'sub_mat');
+    if (fisherz==1)
+        fname=[sprintf('%05d',sscanf(char(subList{u,1}),'sub%d')),'.mat']; % zeropad subID
+    else 
+        fname=[sprintf('%05d',sscanf(char(subList{u,1}),'sub%d')),'_rawcorr.mat']
+    end
+    
+    sub_mat=timeseries(1,1,3).rest(:,:,u);
+    sub_mat(isinf(sub_mat))=1;
+    save(fname,'sub_mat'); 
 end
+
+
 
 %dlmwrite('fztmat_allsubs_rest.txt',avgcorrmat_subs,'delimiter',' ','precision',3)
 
 
-%output a text file subjects x roi-pairs that has fishers z estimates per roi-pair
+%output a text file subjects x roi-pairs that has fisher's z estimates per roi-pair
 
-%//make all diagonals zero for first sub as test matrix to get index for lower-triangular matrix
+%make all diagonals zero for first sub as test matrix to get index for lower-triangular matrix
 x=tril(avgcorrmat_subs); %x is roi x roi
 for roi=1:length(roiList)
     x(roi,roi)=0;
 end
 
-%//index x's row,col addresses that have non-zero entries
+%index x's row,col addresses that have non-zero entries
 [r,c]=find(x);
 
 %make a matrix that is sub x roi-pairs
@@ -121,7 +126,7 @@ corrlist_subs=zeros(length(subList),length(r));
 for rel=1:length(r)
     for u=1:length(subList)
     corrlist_subs(u,rel)=timeseries(1,1,3).rest(r(rel),c(rel),u);
-%//         corrlist_subs(u,rel)=timeseries(1,1,2).rest(r(rel),c(rel),u);
+%         corrlist_subs(u,rel)=timeseries(1,1,2).rest(r(rel),c(rel),u);
 
     end
 end
